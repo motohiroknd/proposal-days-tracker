@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>見積到着→見積提案 経過日数集計</title>
+    
+    <!-- Google Fonts (Roboto) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS (スタイリング用) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PapaParse (CSVパース用) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <!-- Chart.js (グラフ描画用) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        /* スクロールバーのカスタマイズ */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f5f5f5; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #bdbdbd; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #9e9e9e; 
+        }
+        body {
+            font-family: 'Roboto', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 antialiased min-h-screen">
+
+    <div class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+        
+        <!-- ヘッダー -->
+        <header class="mb-8">
+            <h1 class="text-3xl font-medium text-gray-900 tracking-tight flex items-center gap-3">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                見積到着→見積提案 経過日数集計
+            </h1>
+            <p class="text-gray-600 mt-2">CSVファイルから、案件担当グループ別・月別の平均経過日数（見積到着から見積提案まで）を可視化します。</p>
+        </header>
+        
+        <!-- コントロールパネル -->
+        <div class="bg-white p-6 rounded shadow-md mb-8">
+            <h2 class="text-xl font-medium mb-2 text-gray-800">データファイルの読み込み</h2>
+            <p class="text-sm text-gray-600 mb-5">
+                案件管理アプリ「見積提案日数集計」の一覧からCSV出力したファイルを選択してください。<br>
+                ※「集計除外チェック」に入力があるデータは自動的に除外されます。
+            </p>
+            
+            <!-- 集計単位の切り替え -->
+            <div class="mb-5 flex items-center gap-4 bg-gray-50 p-3 rounded border border-gray-200">
+                <span class="text-sm font-medium text-gray-700">集計単位:</span>
+                <label class="inline-flex items-center cursor-pointer">
+                    <input type="radio" name="aggregationUnit" value="monthly" class="form-radio text-blue-600 h-4 w-4" checked>
+                    <span class="ml-2 text-gray-800 text-sm">月別</span>
+                </label>
+                <label class="inline-flex items-center cursor-pointer">
+                    <input type="radio" name="aggregationUnit" value="weekly" class="form-radio text-blue-600 h-4 w-4">
+                    <span class="ml-2 text-gray-800 text-sm">週別（月曜始まり）</span>
+                </label>
+            </div>
+
+            <div class="flex items-center justify-center w-full">
+                <label for="csvFileInput" class="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors relative overflow-hidden group">
+                    <div class="absolute inset-0 bg-blue-500 opacity-0 group-hover:opacity-5 transition-opacity"></div>
+                    <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                        <svg aria-hidden="true" class="w-10 h-10 mb-3 text-gray-400 group-hover:text-blue-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                        <p class="mb-2 text-sm text-gray-600"><span class="font-medium text-blue-600 uppercase tracking-wide">ファイルを選択</span> またはドラッグ＆ドロップ</p>
+                        <p class="text-xs text-gray-500 mt-1">CSV形式 (.csv)</p>
+                    </div>
+                    <input id="csvFileInput" type="file" accept=".csv" class="hidden" />
+                </label>
+            </div>
+            
+            <!-- エラーメッセージ表示用 -->
+            <div id="errorMessage" class="hidden mt-4 p-4 bg-red-50 text-red-700 text-sm rounded shadow-sm font-medium"></div>
+        </div>
+
+        <!-- 結果表示エリア (初期は非表示) -->
+        <div id="resultArea" class="hidden space-y-6 animate-fade-in">
+            
+            <!-- グラフエリア -->
+            <div class="bg-white p-6 rounded shadow-md">
+                <h2 class="text-xl font-medium mb-6 text-gray-800">グループ別 平均経過日数 推移</h2>
+                <div class="relative h-[400px] w-full">
+                    <canvas id="trendChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 集計テーブルエリア -->
+            <div class="bg-white rounded shadow-md overflow-hidden flex flex-col">
+                <div class="p-6 border-b border-gray-200 flex justify-between items-center bg-white">
+                    <h2 class="text-xl font-medium text-gray-800">クロス集計表 <span class="text-sm font-normal text-gray-500 ml-2">（平均日数と対象件数）</span></h2>
+                </div>
+                <!-- テーブルコンテナ (スクロール対応) -->
+                <div class="overflow-x-auto overflow-y-auto max-h-[600px] bg-white">
+                    <table class="w-full text-left border-collapse min-w-max bg-white">
+                        <thead id="tableHead" class="bg-gray-50 sticky top-0 z-10 shadow-sm">
+                            <!-- JSで生成 -->
+                        </thead>
+                        <tbody id="tableBody" class="divide-y divide-gray-200">
+                            <!-- JSで生成 -->
+                        </tbody>
+                        <tfoot id="tableFoot" class="bg-gray-50 sticky bottom-0 z-10 shadow-[0_-1px_2px_rgba(0,0,0,0.05)]">
+                            <!-- JSで生成 -->
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+
+    <script>
+        // グローバル変数：チャートインスタンス保持用、元データ保持用
+        let currentChart = null;
+        let rawCsvData = null;
+        let parsedCols = null;
+
+        // 集計単位切り替え時のイベントリスナー設定
+        document.querySelectorAll('input[name="aggregationUnit"]').forEach(radio => {
+            radio.addEventListener('change', () => {
+                // すでにデータが読み込まれていれば、再集計して描画
+                if (rawCsvData && parsedCols) {
+                    processData(rawCsvData, parsedCols.daysCol, parsedCols.groupCol, parsedCols.dateCol, parsedCols.excludeCol);
+                }
+            });
+        });
+
+        // イベントリスナー設定
+        document.getElementById('csvFileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // UIをリセット
+            hideError();
+            document.getElementById('resultArea').classList.add('hidden');
+
+            // 業務システム由来のCSVはShift_JISが多い為、まずはShift_JISで読み込みを試みる
+            readCsv(file, 'Shift_JIS');
+        });
+
+        function readCsv(file, encoding) {
+            const reader = new FileReader();
+            
+            reader.onload = function(event) {
+                const csvData = event.target.result;
+                
+                Papa.parse(csvData, {
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: function(results) {
+                        const data = results.data;
+                        if (data.length === 0) {
+                            showError("CSVデータが空です。");
+                            return;
+                        }
+                        
+                        // 必要なカラムを特定（柔軟にマッチング）
+                        const keys = Object.keys(data[0]);
+                        
+                        const daysCol = keys.find(k => k.includes("経過日数") && k.includes("到着") && k.includes("提出")) 
+                                        || keys.find(k => k.includes("経過日数"));
+                        const groupCol = keys.find(k => k.includes("案件担当グループ")) 
+                                        || keys.find(k => k.includes("担当グループ"));
+                        const dateCol = keys.find(k => k.includes("見積提出日")) 
+                                        || keys.find(k => k.includes("提出日"));
+                        const excludeCol = keys.find(k => k.includes("集計除外チェック")) 
+                                        || keys.find(k => k.includes("除外"));
+
+                        // カラムが見つからない場合、文字化けを疑い UTF-8 で再読み込み
+                        if (!daysCol || !groupCol || !dateCol || !excludeCol) {
+                            if (encoding === 'Shift_JIS') {
+                                console.log("Shift_JISでのカラム特定に失敗したため、UTF-8で再試行します。");
+                                readCsv(file, 'UTF-8');
+                                return;
+                            }
+                            showError("必要な項目がCSVに見つかりませんでした。<br>必須: 「経過日数（見積到着→見積提出）」「案件担当グループ」「見積提出日」「集計除外チェック」");
+                            return;
+                        }
+
+                        // 再集計用に元データを保持
+                        rawCsvData = data;
+                        parsedCols = { daysCol, groupCol, dateCol, excludeCol };
+
+                        // データ集計処理へ
+                        processData(data, daysCol, groupCol, dateCol, excludeCol);
+                    },
+                    error: function(err) {
+                        showError("CSVの解析に失敗しました: " + err.message);
+                    }
+                });
+            };
+            
+            reader.onerror = function() {
+                showError("ファイルの読み込みに失敗しました。");
+            };
+            
+            reader.readAsText(file, encoding);
+        }
+
+        function processData(data, daysCol, groupCol, dateCol, excludeCol) {
+            const unit = document.querySelector('input[name="aggregationUnit"]:checked').value;
+            
+            // 集計用オブジェクト
+            const summary = {}; 
+            const groupNames = new Set();
+            const timeKeys = new Set();
+
+            data.forEach((row, index) => {
+                // 1. 集計除外チェック (値が入っていれば除外)
+                const excludeVal = String(row[excludeCol] || '').trim();
+                if (excludeVal !== '') {
+                    return; // スキップ
+                }
+
+                // 2. 提出日から月または週を抽出
+                const dateStr = String(row[dateCol] || '').trim();
+                if (!dateStr) return; 
+                
+                let timeKey = '';
+                // 2026/07/23, 2026-07-23, 2026年7月23日 などに対応
+                const dateMatch = dateStr.match(/(\d{4})[-\/年](\d{1,2})([-\/月](\d{1,2}))?/);
+                if (dateMatch) {
+                    const y = parseInt(dateMatch[1], 10);
+                    const m = parseInt(dateMatch[2], 10);
+                    const d = dateMatch[4] ? parseInt(dateMatch[4], 10) : 1;
+                    
+                    if (unit === 'monthly') {
+                        timeKey = `${y}/${String(m).padStart(2, '0')}`;
+                    } else if (unit === 'weekly') {
+                        // 月曜始まりの週を計算
+                        const dateObj = new Date(y, m - 1, d);
+                        const dayOfWeek = dateObj.getDay();
+                        const diff = dateObj.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // 0は日曜日
+                        const monday = new Date(dateObj.setDate(diff));
+                        timeKey = `${monday.getFullYear()}/${String(monday.getMonth() + 1).padStart(2, '0')}/${String(monday.getDate()).padStart(2, '0')}週`;
+                    }
+                } else {
+                    return; // 日付として認識できない場合はスキップ
+                }
+
+                // 3. 経過日数
+                const daysStr = String(row[daysCol] || '').trim();
+                const days = parseFloat(daysStr);
+                if (isNaN(days)) return; // 数値化できない場合はスキップ
+
+                // 4. 案件担当グループ
+                const group = String(row[groupCol] || '(グループ未設定)').trim();
+
+                // 「一棟課」は集計から除外する
+                if (group === '一棟課') {
+                    return;
+                }
+
+                // 5. データの格納・集計
+                if (!summary[timeKey]) {
+                    summary[timeKey] = { totalCount: 0, groups: {} };
+                }
+                if (!summary[timeKey].groups[group]) {
+                    summary[timeKey].groups[group] = { sum: 0, count: 0 };
+                }
+
+                summary[timeKey].totalCount++;
+                summary[timeKey].groups[group].sum += days;
+                summary[timeKey].groups[group].count++;
+
+                groupNames.add(group);
+                timeKeys.add(timeKey);
+            });
+
+            // ソート
+            const sortedKeys = Array.from(timeKeys).sort();
+            const sortedGroups = Array.from(groupNames).sort();
+
+            if (sortedKeys.length === 0) {
+                showError("有効なデータが見つかりませんでした。「集計除外チェック」が空で、有効な日付と数値を持つデータがあるか確認してください。");
+                return;
+            }
+
+            // 画面描画
+            renderTable(summary, sortedKeys, sortedGroups);
+            renderChart(summary, sortedKeys, sortedGroups);
+            
+            // 結果エリアを表示
+            document.getElementById('resultArea').classList.remove('hidden');
+        }
+
+        function renderTable(summary, timeKeys, groups) {
+            const tHead = document.getElementById('tableHead');
+            const tBody = document.getElementById('tableBody');
+            const tFoot = document.getElementById('tableFoot');
+
+            // ヘッダー生成
+            let headHtml = `<tr>
+                <th class="px-6 py-4 font-medium text-gray-600 whitespace-nowrap border-b-2 border-gray-200">案件担当グループ</th>`;
+            timeKeys.forEach(k => {
+                headHtml += `<th class="px-6 py-4 font-medium text-gray-600 text-center whitespace-nowrap border-b-2 border-gray-200">${k}</th>`;
+            });
+            headHtml += `</tr>`;
+            tHead.innerHTML = headHtml;
+
+            // ボディ生成
+            let bodyHtml = ``;
+            groups.forEach(group => {
+                bodyHtml += `<tr class="hover:bg-gray-50 transition-colors">`;
+                bodyHtml += `<td class="px-6 py-4 font-medium text-gray-800 whitespace-nowrap border-r border-gray-100">${group}</td>`;
+                
+                timeKeys.forEach(k => {
+                    const timeData = summary[k].groups[group];
+                    if (timeData && timeData.count > 0) {
+                        const avg = (timeData.sum / timeData.count).toFixed(1);
+                        bodyHtml += `
+                            <td class="px-6 py-4 text-right whitespace-nowrap">
+                                <div class="flex flex-col items-end gap-1.5">
+                                    <div><span class="text-gray-900 font-semibold text-[16px]">${avg}</span> <span class="text-gray-500 text-xs">日</span></div>
+                                    <div class="inline-flex items-center px-2.5 py-0.5 bg-indigo-50 text-indigo-700 text-[11px] rounded-full font-medium border border-indigo-100">
+                                        ${timeData.count} 件
+                                    </div>
+                                </div>
+                            </td>`;
+                    } else {
+                        bodyHtml += `<td class="px-6 py-4 text-right text-gray-300 whitespace-nowrap">-</td>`;
+                    }
+                });
+                bodyHtml += `</tr>`;
+            });
+            tBody.innerHTML = bodyHtml;
+
+            // フッター生成 (対象全体件数)
+            let footHtml = `<tr class="bg-indigo-50/40">
+                <td class="px-6 py-4 font-medium text-indigo-900 whitespace-nowrap border-r border-gray-200 border-t-2 border-indigo-200">対象全体件数</td>`;
+            timeKeys.forEach(k => {
+                const count = summary[k].totalCount;
+                footHtml += `
+                    <td class="px-6 py-4 text-right whitespace-nowrap border-t-2 border-indigo-200">
+                        <span class="font-bold text-indigo-800 text-lg">${count}</span> <span class="text-indigo-600 text-xs font-medium ml-0.5">件</span>
+                    </td>`;
+            });
+            footHtml += `</tr>`;
+            tFoot.innerHTML = footHtml;
+        }
+
+        function renderChart(summary, timeKeys, groups) {
+            const ctx = document.getElementById('trendChart').getContext('2d');
+            
+            // 既存のグラフがあれば破棄
+            if (currentChart) {
+                currentChart.destroy();
+            }
+
+            // Material Design カラーパレット
+            const colors = [
+                '#1976D2', // Blue
+                '#D32F2F', // Red
+                '#388E3C', // Green
+                '#F57C00', // Orange
+                '#7B1FA2', // Purple
+                '#C2185B', // Pink
+                '#0097A7', // Cyan
+                '#E64A19', // Deep Orange
+                '#455A64', // Blue Grey
+                '#AFB42B'  // Lime
+            ];
+
+            // グラフ用データセットの構築
+            const datasets = groups.map((group, index) => {
+                const data = timeKeys.map(k => {
+                    const timeData = summary[k].groups[group];
+                    if (timeData && timeData.count > 0) {
+                        return (timeData.sum / timeData.count).toFixed(1);
+                    }
+                    return null; 
+                });
+
+                const color = colors[index % colors.length];
+
+                return {
+                    label: group,
+                    data: data,
+                    borderColor: color,
+                    backgroundColor: color,
+                    borderWidth: 2,
+                    tension: 0, // マテリアルデザインらしい直線のグラフ
+                    fill: false,
+                    spanGaps: true, 
+                    pointBackgroundColor: color,
+                    pointBorderColor: '#ffffff',
+                    pointBorderWidth: 1,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    pointHoverBackgroundColor: color,
+                    pointHoverBorderColor: '#ffffff'
+                };
+            });
+
+            currentChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: timeKeys,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 20,
+                                font: {
+                                    family: "'Roboto', sans-serif",
+                                    size: 13
+                                }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(97, 97, 97, 0.95)', // マテリアルのグレー
+                            titleFont: { family: "'Roboto', sans-serif", size: 14, weight: '500' },
+                            bodyFont: { family: "'Roboto', sans-serif", size: 13 },
+                            padding: 12,
+                            cornerRadius: 4,
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.parsed.y} 日`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                font: { family: "'Roboto', sans-serif" },
+                                color: '#757575'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: '#EEEEEE',
+                                drawBorder: false
+                            },
+                            title: {
+                                display: true,
+                                text: '平均経過日数 (日)',
+                                color: '#757575',
+                                font: { family: "'Roboto', sans-serif", size: 12 }
+                            },
+                            ticks: {
+                                font: { family: "'Roboto', sans-serif" },
+                                color: '#757575'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function showError(msg) {
+            const errorEl = document.getElementById('errorMessage');
+            errorEl.innerHTML = msg;
+            errorEl.classList.remove('hidden');
+        }
+
+        function hideError() {
+            document.getElementById('errorMessage').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
