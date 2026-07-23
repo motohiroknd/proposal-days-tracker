@@ -146,6 +146,16 @@
         const fileInput = document.getElementById('csvFileInput');
         const dropZone = document.getElementById('dropZone');
 
+        // --- 追加：画面全体へのドラッグ＆ドロップ時、ブラウザがファイルを開くデフォルトの挙動を完全に防止 ---
+        window.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'none'; // 枠外ではドロップ禁止のカーソル
+        }, false);
+        window.addEventListener('drop', function(e) {
+            e.preventDefault();
+        }, false);
+        // ------------------------------------------------------------------------------------------
+
         // クリック等でファイルが選択された場合
         fileInput.addEventListener('change', function(e) {
             handleFiles(e.target.files);
@@ -163,7 +173,11 @@
             e.stopPropagation();
         }
 
-        // ドラッグ中の視覚的フィードバック
+        // ドラッグ中の視覚的フィードバックとカーソル設定
+        dropZone.addEventListener('dragover', function(e) {
+            e.dataTransfer.dropEffect = 'copy'; // 枠内ではコピーのカーソルに変更
+        }, false);
+
         ['dragenter', 'dragover'].forEach(eventName => {
             dropZone.addEventListener(eventName, highlight, false);
         });
