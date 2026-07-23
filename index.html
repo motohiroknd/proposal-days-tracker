@@ -76,9 +76,9 @@
             </div>
 
             <div class="flex items-center justify-center w-full">
-                <label for="csvFileInput" class="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors relative overflow-hidden group">
-                    <div class="absolute inset-0 bg-blue-500 opacity-0 group-hover:opacity-5 transition-opacity"></div>
-                    <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                <label id="dropZone" for="csvFileInput" class="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors relative overflow-hidden group">
+                    <div class="absolute inset-0 bg-blue-500 opacity-0 group-hover:opacity-5 transition-opacity pointer-events-none"></div>
+                    <div class="flex flex-col items-center justify-center pt-5 pb-6 pointer-events-none">
                         <svg aria-hidden="true" class="w-10 h-10 mb-3 text-gray-400 group-hover:text-blue-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
                         <p class="mb-2 text-sm text-gray-600"><span class="font-medium text-blue-600 uppercase tracking-wide">ファイルを選択</span> またはドラッグ＆ドロップ</p>
                         <p class="text-xs text-gray-500 mt-1">CSV形式 (.csv)</p>
@@ -143,9 +143,63 @@
         });
 
         // イベントリスナー設定
-        document.getElementById('csvFileInput').addEventListener('change', function(e) {
-            const file = e.target.files[0];
+        const fileInput = document.getElementById('csvFileInput');
+        const dropZone = document.getElementById('dropZone');
+
+        // クリック等でファイルが選択された場合
+        fileInput.addEventListener('change', function(e) {
+            handleFiles(e.target.files);
+            // 同じファイルを再度選択できるように値をリセット
+            e.target.value = '';
+        });
+
+        // ドラッグ＆ドロップ関連のイベント
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        // ドラッグ中の視覚的フィードバック
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight(e) {
+            dropZone.classList.add('bg-blue-50', 'border-blue-400');
+            dropZone.classList.remove('bg-gray-50', 'border-gray-300');
+        }
+
+        function unhighlight(e) {
+            dropZone.classList.remove('bg-blue-50', 'border-blue-400');
+            dropZone.classList.add('bg-gray-50', 'border-gray-300');
+        }
+
+        // ドロップされたファイルの処理
+        dropZone.addEventListener('drop', handleDrop, false);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        }
+
+        function handleFiles(files) {
+            const file = files[0];
             if (!file) return;
+
+            // 拡張子チェック
+            if (!file.name.toLowerCase().endsWith('.csv')) {
+                showError("CSVファイルを選択してください。");
+                return;
+            }
 
             // UIをリセット
             hideError();
@@ -153,7 +207,7 @@
 
             // 業務システム由来のCSVはShift_JISが多い為、まずはShift_JISで読み込みを試みる
             readCsv(file, 'Shift_JIS');
-        });
+        }
 
         function readCsv(file, encoding) {
             const reader = new FileReader();
